@@ -1,4 +1,35 @@
 ---
+# Source: netdata/templates/psp.yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: netdata-psp
+  labels:
+    heritage: Tiller
+    release: netdata
+    chart: netdata-1.1.13
+spec:
+  allowPrivilegeEscalation: true
+  allowedCapabilities:
+  - '*'
+  fsGroup:
+    rule: RunAsAny
+  hostIPC: true
+  hostNetwork: true
+  hostPID: true
+  hostPorts:
+  - max: 65535
+    min: 0
+  privileged: true
+  runAsUser:
+    rule: RunAsAny
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  volumes:
+  - '*'
+---
 # Source: netdata/templates/configmap.yaml
 ---
 apiVersion: v1
@@ -7,7 +38,7 @@ metadata:
   name: netdata-conf-slave
   labels:
     app: netdata
-    chart: netdata-1.1.6
+    chart: netdata-1.1.13
     release: netdata
     heritage: Tiller
 data:
@@ -53,7 +84,7 @@ metadata:
   name: netdata-conf-master
   labels:
     app: netdata
-    chart: netdata-1.1.6
+    chart: netdata-1.1.13
     release: netdata
     heritage: Tiller
 data:
@@ -103,7 +134,7 @@ apiVersion: v1
 metadata:
   labels:
     app: netdata
-    chart: netdata-1.1.6
+    chart: netdata-1.1.13
     release: netdata
     heritage: Tiller
   name: netdata
@@ -115,7 +146,7 @@ metadata:
   name: netdata
   labels:
     app: netdata
-    chart: netdata-1.1.6
+    chart: netdata-1.1.13
     release: netdata
     heritage: Tiller
 rules:
@@ -134,6 +165,23 @@ rules:
   resources: ["nodes/metrics", "nodes/spec"]
   verbs: ["get"]
 ---
+# Source: netdata/templates/psp-clusterrole.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: netdata-psp
+  labels:
+    app: netdata
+    chart: netdata-1.1.13
+    release: netdata
+    heritage: Tiller
+rules:
+- apiGroups: ['policy']
+  resources: ['podsecuritypolicies']
+  verbs:     ['use']
+  resourceNames:
+  - netdata-psp
+---
 # Source: netdata/templates/clusterrolebinding.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -141,13 +189,32 @@ metadata:
   name: netdata
   labels:
     app: netdata
-    chart: netdata-1.1.6
+    chart: netdata-1.1.13
     release: netdata
     heritage: Tiller
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: netdata
+subjects:
+- kind: ServiceAccount
+  name: netdata
+  namespace: netdata
+---
+# Source: netdata/templates/psp-clusterrolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: netdata-psp
+  labels:
+    app: netdata
+    chart: netdata-1.1.13
+    release: netdata
+    heritage: Tiller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: netdata-psp
 subjects:
 - kind: ServiceAccount
   name: netdata
@@ -160,7 +227,7 @@ metadata:
   name: netdata
   labels:
     app: netdata
-    chart: netdata-1.1.6
+    chart: netdata-1.1.13
     release: netdata
     heritage: Tiller
     role: master
@@ -184,7 +251,7 @@ metadata:
   name: netdata-slave
   labels:
     app: netdata
-    chart: netdata-1.1.6
+    chart: netdata-1.1.13
     release: netdata
     heritage: Tiller
     role: slave
@@ -198,7 +265,7 @@ spec:
     metadata:
       annotations:
         container.apparmor.security.beta.kubernetes.io/netdata: unconfined
-        checksum/config: 8580356dd5a5ae047dfdf60696dc85d1033ca0ed8aae31207f7b4fab950f8aa2
+        checksum/config: 6743fb1ea4aae0cfd782c6e486ba713b1833f6031145e8855c8dba6976bdbb15
       labels:
         app: netdata
         release: netdata
@@ -212,7 +279,7 @@ spec:
       initContainers:
       containers:
         - name: netdata
-          image: "netdata/netdata:v1.17.1"
+          image: "netdata/netdata:v1.20.0"
           imagePullPolicy: Always
           env:
             - name: MY_POD_NAME
@@ -224,9 +291,6 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
           lifecycle:
-            postStart:
-              exec:
-                command: ["/bin/sh","-c","python -c 'import uuid; import socket; print(uuid.uuid3(uuid.NAMESPACE_DNS, socket.gethostname()))' > /var/lib/netdata/registry/netdata.public.unique.id"]
             preStop:
               exec:
                 command: ["/bin/sh","-c","killall netdata; while killall -0 netdata; do sleep 1; done"]
@@ -302,13 +366,13 @@ spec:
 
 ---
 # Source: netdata/templates/statefulset.yaml
-apiVersion: apps/v1beta2
+apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: netdata-master
   labels:
     app: netdata
-    chart: netdata-1.1.6
+    chart: netdata-1.1.13
     release: netdata
     heritage: Tiller
     role: master
@@ -320,7 +384,7 @@ spec:
         name: database
       spec:
         accessModes: [ "ReadWriteOnce" ]
-        storageClassName: do-block-storage
+        storageClassName: "do-block-storage"
         resources:
           requests:
             storage: 2Gi
@@ -336,7 +400,7 @@ spec:
         release: netdata
         role: master
       annotations:
-        checksum/config: 8580356dd5a5ae047dfdf60696dc85d1033ca0ed8aae31207f7b4fab950f8aa2
+        checksum/config: 6743fb1ea4aae0cfd782c6e486ba713b1833f6031145e8855c8dba6976bdbb15
     spec:
       securityContext:
         fsGroup: 201
@@ -344,7 +408,7 @@ spec:
       initContainers:
       containers:
         - name: netdata
-          image: "netdata/netdata:v1.17.1"
+          image: "netdata/netdata:v1.20.0"
           imagePullPolicy: Always
           env:
             - name: MY_POD_NAME
@@ -356,9 +420,6 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
           lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh","-c","python -c 'import uuid; import socket; print(uuid.uuid3(uuid.NAMESPACE_DNS, socket.gethostname()))' > /var/lib/netdata/registry/netdata.public.unique.id"]
             preStop:
               exec:
                 command: ["/bin/sh","-c","killall netdata; while killall -0 netdata; do sleep 1; done"]
@@ -410,7 +471,7 @@ metadata:
   name: netdata
   labels:
     app: netdata
-    chart: netdata-1.1.6
+    chart: netdata-1.1.13
     release: netdata
     heritage: Tiller
   annotations:
